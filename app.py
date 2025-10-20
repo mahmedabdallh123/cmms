@@ -7,24 +7,28 @@ import os
 import streamlit.components.v1 as components
 
 # ===============================
-# 📂 تحميل البيانات من الإكسيل من GitHub
+# 📂 تحميل البيانات من GitHub
 # ===============================
+GITHUB_EXCEL_URL = "https://github.com/mahmedabdallh123/cmms/raw/refs/heads/main/Machine_Service_Lookup.xlsx"
+
 @st.cache_data
 def load_all_sheets():
-    GITHUB_EXCEL_URL = "https://github.com/mahmedabdallh123/cmms/raw/refs/heads/main/Machine_Service_Lookup.xlsx"
     try:
         return pd.read_excel(GITHUB_EXCEL_URL, sheet_name=None)
+    except FileNotFoundError:
+        st.error("❌ لم يتم العثور على ملف Machine_Service_Lookup.xlsx.")
+        st.stop()
     except Exception as e:
-        st.error(f"❌ خطأ أثناء تحميل الملف من GitHub:\n{e}")
+        st.error(f"❌ خطأ أثناء تحميل الملف من GitHub: {e}")
         st.stop()
 
 # ===============================
 # 🔑 نظام التجربة المجانية مع باسورد
 # ===============================
 TOKENS_FILE = "tokens.json"
-TRIAL_SECONDS = 60    # مدة التجربة بالثواني
-RENEW_HOURS = 24      # عدد الساعات قبل إعادة التجربة
-PASSWORD = "1234"     # كلمة المرور
+TRIAL_SECONDS = 60
+RENEW_HOURS = 24
+PASSWORD = "1234"
 
 def load_tokens():
     if not os.path.exists(TOKENS_FILE):
@@ -77,7 +81,6 @@ def check_free_trial(user_id="default_user"):
     tokens = load_tokens()
     now_ts = int(time.time())
 
-    # لو المستخدم جديد
     if user_id not in tokens:
         tokens[user_id] = {"last_trial": 0}
         save_tokens(tokens)
@@ -85,7 +88,6 @@ def check_free_trial(user_id="default_user"):
     last_trial = tokens[user_id]["last_trial"]
     hours_since_last = (now_ts - last_trial) / 3600
 
-    # لو التجربة شغالة بالفعل
     if "trial_start" in st.session_state:
         elapsed = now_ts - st.session_state["trial_start"]
         if elapsed < TRIAL_SECONDS:
@@ -101,7 +103,6 @@ def check_free_trial(user_id="default_user"):
                 return True
             return False
 
-    # إذا مرّت 24 ساعة منذ آخر تجربة
     if hours_since_last >= RENEW_HOURS:
         if st.button("تفعيل التجربة المجانية 60 ثانية"):
             tokens[user_id]["last_trial"] = now_ts
@@ -111,7 +112,6 @@ def check_free_trial(user_id="default_user"):
             st.experimental_rerun()
         return False
 
-    # لو لم يمر 24 ساعة
     remaining_hours = max(0, RENEW_HOURS - hours_since_last)
     st.warning(f"🔒 انتهت التجربة المجانية. يمكنك إعادة التجربة بعد {remaining_hours:.1f} ساعة أو الدخول بالباسورد.")
     password = st.text_input("أدخل كلمة المرور للوصول:", type="password")
@@ -154,26 +154,26 @@ def check_machine_status(card_num, current_tons, all_sheets):
         st.warning(f"⚠ لا يوجد شيت باسم {card_sheet_name}")
         return None
 
-    card_df = all_sheets[card_sheet_name]
+    # ✅ تم التصحيح هنا (Min_Tones بدل Min_Tons)
     current_slice = service_plan_df[
-        (service_plan_df["Min_Tons"] <= current_tons) &
-        (service_plan_df["Max_Tons"] >= current_tons)
+        (service_plan_df["Min_Tones"] <= current_tons) &
+        (service_plan_df["Max_Tones"] >= current_tons)
     ]
 
     if current_slice.empty:
         st.warning("⚠ لم يتم العثور على شريحة تناسب عدد الأطنان الحالي.")
         return None
 
-    min_tons = current_slice["Min_Tons"].values[0]
-    max_tons = current_slice["Max_Tons"].values[0]
+    min_tons = current_slice["Min_Tones"].values[0]
+    max_tons = current_slice["Max_Tones"].values[0]
     needed_service_raw = current_slice["Service"].values[0]
     needed_parts = split_needed_services(needed_service_raw)
     needed_norm = [normalize_name(p) for p in needed_parts]
 
+    card_df = all_sheets[card_sheet_name]
     slice_df = card_df[
-        (card_df["card"] == card_num) &
-        (card_df["Tones"] >= min_tons) &
-        (card_df["Tones"] <= max_tons)
+        (card_df["Min_Tones"] == min_tons) &
+        (card_df["Max_Tones"] == max_tons)
     ]
 
     done_services, last_date, last_tons = [], "-", "-"
@@ -184,7 +184,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
         last_date = last_row.get("Date", "-")
         last_tons = last_row.get("Tones", "-")
 
-        ignore_cols = ["card", "Tones", "Date", "Current_Tons", "Service Needed", "Min_Tons", "Max_Tons"]
+        ignore_cols = ["card", "Tones", "Date", "Min_Tones", "Max_Tones"]
         for col in card_df.columns:
             if col not in ignore_cols:
                 val = str(last_row.get(col, "")).strip().lower()
@@ -209,16 +209,13 @@ def check_machine_status(card_num, current_tons, all_sheets):
 
     result_df = pd.DataFrame([result])
 
-    # 🎨 تلوين الأعمدة
     def highlight_cell(val, col_name):
         if col_name == "Service Needed":
-            return "background-color: #fff3cd; color:#856404; font-weight:bold;"  # أصفر
+            return "background-color: #fff3cd; color:#856404; font-weight:bold;"
         elif col_name == "Done Services":
-            return "background-color: #d4edda; color:#155724; font-weight:bold;"  # أخضر
+            return "background-color: #d4edda; color:#155724; font-weight:bold;"
         elif col_name == "Not Done Services":
-            return "background-color: #f8d7da; color:#721c24; font-weight:bold;"  # أحمر
-        elif col_name in ["Date", "Tones"]:
-            return "background-color: #e7f1ff; color:#004085;"  # أزرق فاتح
+            return "background-color: #f8d7da; color:#721c24; font-weight:bold;"
         elif col_name == "Status":
             if "✅" in val:
                 return "background-color:#c3e6cb; color:#155724;"
@@ -231,11 +228,6 @@ def check_machine_status(card_num, current_tons, all_sheets):
 
     styled_df = result_df.style.apply(style_table, axis=1)
     st.dataframe(styled_df, use_container_width=True)
-
-    save = st.button("💾 حفظ النتيجة في Excel")
-    if save:
-        result_df.to_excel("Machine_Result.xlsx", index=False)
-        st.success("✅ تم حفظ النتيجة في ملف 'Machine_Result.xlsx' بنجاح.")
 
 # ===============================
 # 🖥 واجهة Streamlit
