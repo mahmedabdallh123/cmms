@@ -20,7 +20,7 @@ PASSWORD = "1234"
 # ===============================
 # 📂 تحميل البيانات من GitHub
 # ===============================
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def load_all_sheets():
     try:
         local_file = "Machine_Service_Lookup.xlsx"
@@ -207,9 +207,21 @@ def check_machine_status(card_num, current_tons, all_sheets):
 # ===============================
 # 🖥 واجهة Streamlit
 # ===============================
-st.title("🔧 نظام متابعة الصيانة التنبؤية")
+st.title("🔧 سيرفيس تحضيرات بيل يارن 1")
+
+# 🔹 Session State للزر
+if "refresh_data" not in st.session_state:
+    st.session_state["refresh_data"] = False
+
+if st.button("🔄 تحديث البيانات من GitHub"):
+    st.session_state["refresh_data"] = True
 
 if check_free_trial(user_id="default_user") or st.session_state.get("access_granted", False):
+    # تحديث البيانات إذا ضغط الزر
+    if st.session_state["refresh_data"]:
+        load_all_sheets.clear()
+        st.session_state["refresh_data"] = False
+
     all_sheets = load_all_sheets()
     st.write("أدخل رقم الماكينة وعدد الأطنان الحالية لمعرفة حالة الصيانة")
     card_num = st.number_input("رقم الماكينة:", min_value=1, step=1)
