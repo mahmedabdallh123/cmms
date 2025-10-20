@@ -119,7 +119,7 @@ def split_needed_services(needed_service_str):
     return [p.strip() for p in parts if p.strip() != ""]
 
 # ===============================
-# ⚙ دالة مقارنة الصيانة
+# ⚙ دالة مقارنة الصيانة مع تلوين الأعمدة
 # ===============================
 def check_machine_status(card_num, current_tons, all_sheets):
     if "ServicePlan" not in all_sheets or "Machine" not in all_sheets:
@@ -181,7 +181,24 @@ def check_machine_status(card_num, current_tons, all_sheets):
     }
 
     result_df = pd.DataFrame([result])
-    st.dataframe(result_df, use_container_width=True)
+
+    # 🎨 تلوين الأعمدة
+    def highlight_cell(val, col_name):
+        if col_name == "Service Needed":
+            return "background-color: #fff3cd; color:#856404; font-weight:bold;"  # أصفر
+        elif col_name == "Done Services":
+            return "background-color: #d4edda; color:#155724; font-weight:bold;"  # أخضر
+        elif col_name == "Not Done Services":
+            return "background-color: #f8d7da; color:#721c24; font-weight:bold;"  # أحمر
+        elif col_name in ["Date", "Tones"]:
+            return "background-color: #e7f1ff; color:#004085;"  # أزرق فاتح
+        return ""
+
+    def style_table(row):
+        return [highlight_cell(row[col], col) for col in row.index]
+
+    styled_df = result_df.style.apply(style_table, axis=1)
+    st.dataframe(styled_df, use_container_width=True)
 
     if st.button("💾 حفظ النتيجة في Excel"):
         result_df.to_excel("Machine_Result.xlsx", index=False)
