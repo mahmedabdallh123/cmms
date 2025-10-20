@@ -23,13 +23,11 @@ PASSWORD = "1234"
 @st.cache_data
 def load_all_sheets():
     try:
-        # تحميل Excel من GitHub
         local_file = "Machine_Service_Lookup.xlsx"
         r = requests.get(GITHUB_EXCEL_URL, stream=True)
         with open(local_file, 'wb') as f:
             shutil.copyfileobj(r.raw, f)
         sheets = pd.read_excel(local_file, sheet_name=None)
-        # تنظيف أسماء الأعمدة
         for name, df in sheets.items():
             df.columns = df.columns.str.strip()
         return sheets
@@ -199,14 +197,27 @@ def check_machine_status(card_num, current_tons, all_sheets):
 # ===============================
 st.title("🔧 نظام متابعة الصيانة التنبؤية")
 
-# زر لتحديث الكاش
+# ===============================
+# ✅ زر تحديث الكاش بطريقة آمنة على Cloud
+# ===============================
+if "refresh" not in st.session_state:
+    st.session_state["refresh"] = False
+
 if st.button("🔄 تحديث البيانات من GitHub"):
     st.cache_data.clear()
-    st.experimental_rerun()
+    st.session_state["refresh"] = True
 
-# تحقق من التجربة المجانية أو الدخول بالباسورد
-if check_free_trial(user_id="default_user") or st.session_state.get("access_granted", False):
-    all_sheets = load_all_sheets()  # تحميل البيانات بعد التحقق من الوصول
+if st.session_state["refresh"]:
+    st.session_state["refresh"] = False
+    all_sheets = load_all_sheets()  # تحميل البيانات بعد مسح الكاش
+else:
+    if check_free_trial(user_id="default_user") or st.session_state.get("access_granted", False):
+        all_sheets = load_all_sheets()  # تحميل البيانات بعد التحقق من الوصول
+
+# ===============================
+# ✅ إدخال بيانات الماكينة
+# ===============================
+if 'all_sheets' in locals():
     st.write("أدخل رقم الماكينة وعدد الأطنان الحالية لمعرفة حالة الصيانة")
     
     card_num = st.number_input("رقم الماكينة:", min_value=1, step=1)
