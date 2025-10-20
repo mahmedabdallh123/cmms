@@ -18,18 +18,16 @@ RENEW_HOURS = 24
 PASSWORD = "1234"
 
 # ===============================
-# 📂 تحميل البيانات من GitHub مع تنظيف الأعمدة
+# 📂 تحميل البيانات من GitHub
 # ===============================
 @st.cache_data
 def load_all_sheets():
     try:
-        # تحميل Excel من GitHub
         local_file = "Machine_Service_Lookup.xlsx"
         r = requests.get(GITHUB_EXCEL_URL, stream=True)
         with open(local_file, 'wb') as f:
             shutil.copyfileobj(r.raw, f)
         sheets = pd.read_excel(local_file, sheet_name=None)
-        # تنظيف أسماء الأعمدة
         for name, df in sheets.items():
             df.columns = df.columns.str.strip()
         return sheets
@@ -121,7 +119,7 @@ def split_needed_services(needed_service_str):
     return [p.strip() for p in parts if p.strip() != ""]
 
 # ===============================
-# ⚙ دالة مقارنة الصيانة
+# ⚙ دالة مقارنة الصيانة مع تلوين الأعمدة
 # ===============================
 def check_machine_status(card_num, current_tons, all_sheets):
     if "ServicePlan" not in all_sheets or "Machine" not in all_sheets:
@@ -135,6 +133,8 @@ def check_machine_status(card_num, current_tons, all_sheets):
         return
 
     card_df = all_sheets[card_sheet_name]
+
+    # شريحة الرنج المناسبة من ServicePlan
     current_slice = service_plan_df[
         (service_plan_df["Min_Tones"] <= current_tons) &
         (service_plan_df["Max_Tones"] >= current_tons)
@@ -144,34 +144,28 @@ def check_machine_status(card_num, current_tons, all_sheets):
         st.warning("⚠ لم يتم العثور على شريحة تناسب عدد الأطنان الحالي.")
         return
 
-    min_tons = current_slice["Min_Tones"].values[0]
-    max_tons = current_slice["Max_Tones"].values[0]
     needed_service_raw = current_slice["Service"].values[0]
     needed_parts = split_needed_services(needed_service_raw)
     needed_norm = [normalize_name(p) for p in needed_parts]
 
-    slice_df = card_df[
-        (card_df["card"] == card_num) &
-        (card_df["Tones"] >= min_tons) &
-        (card_df["Tones"] <= max_tons)
-    ]
-
     done_services, last_date, last_tons = [], "-", "-"
-    status = "❌ لم يتم تنفيذ صيانة في هذه الشريحة"
 
-    if not slice_df.empty:
-        last_row = slice_df.iloc[-1]
-        last_date = last_row.get("Date", "-")
-        last_tons = last_row.get("Tones", "-")
+    # فلترة الصفوف حسب الرنج الحالي للشيت نفسه
+    for idx, row in card_df.iterrows():
+        row_min = row.get("Min_Tones", 0)
+        row_max = row.get("Max_Tones", 0)
 
-        ignore_cols = ["card", "Tones", "Date", "Current_Tones", "Service Needed", "Min_Tones", "Max_Tones"]
-        for col in card_df.columns:
-            if col not in ignore_cols:
-                val = str(last_row.get(col, "")).strip().lower()
-                if val and val not in ["nan", "none", ""]:
-                    done_services.append(col)
-        if done_services:
-            status = "✅ تم تنفيذ صيانة في هذه الشريحة"
+        if row_min <= current_tons <= row_max:
+            row_done = []
+            ignore_cols = ["card", "Tones", "Min_Tones", "Max_Tones", "Date"]
+            for col in card_df.columns:
+                if col not in ignore_cols:
+                    val = str(row.get(col, "")).strip()
+                    if val and val.lower() not in ["nan", "none", ""]:
+                        row_done.append(col)
+            done_services.extend(row_done)
+            last_date = row.get("Date", "-")
+            last_tons = row.get("Tones", "-")
 
     done_norm = [normalize_name(c) for c in done_services]
     not_done = [orig for orig, n in zip(needed_parts, needed_norm) if n not in done_norm]
@@ -184,11 +178,27 @@ def check_machine_status(card_num, current_tons, all_sheets):
         "Not Done Services": ", ".join(not_done) if not_done else "-",
         "Date": last_date,
         "Tones": last_tons,
-        "Status": status,
     }
 
     result_df = pd.DataFrame([result])
-    st.dataframe(result_df, use_container_width=True)
+
+    # 🎨 تلوين الأعمدة
+    def highlight_cell(val, col_name):
+        if col_name == "Service Needed":
+            return "background-color: #fff3cd; color:#856404; font-weight:bold;"  # أصفر
+        elif col_name == "Done Services":
+            return "background-color: #d4edda; color:#155724; font-weight:bold;"  # أخضر
+        elif col_name == "Not Done Services":
+            return "background-color: #f8d7da; color:#721c24; font-weight:bold;"  # أحمر
+        elif col_name in ["Date", "Tones"]:
+            return "background-color: #e7f1ff; color:#004085;"  # أزرق فاتح
+        return ""
+
+    def style_table(row):
+        return [highlight_cell(row[col], col) for col in row.index]
+
+    styled_df = result_df.style.apply(style_table, axis=1)
+    st.dataframe(styled_df, use_container_width=True)
 
     if st.button("💾 حفظ النتيجة في Excel"):
         result_df.to_excel("Machine_Result.xlsx", index=False)
@@ -199,18 +209,10 @@ def check_machine_status(card_num, current_tons, all_sheets):
 # ===============================
 st.title("🔧 نظام متابعة الصيانة التنبؤية")
 
-# زر لتحديث الكاش
-if st.button("🔄 تحديث البيانات من GitHub"):
-    st.cache_data.clear()
-    st.experimental_rerun()
-
-# تحقق من التجربة المجانية أو الدخول بالباسورد
 if check_free_trial(user_id="default_user") or st.session_state.get("access_granted", False):
-    all_sheets = load_all_sheets()  # تحميل البيانات بعد التحقق من الوصول
+    all_sheets = load_all_sheets()
     st.write("أدخل رقم الماكينة وعدد الأطنان الحالية لمعرفة حالة الصيانة")
-    
     card_num = st.number_input("رقم الماكينة:", min_value=1, step=1)
     current_tons = st.number_input("عدد الأطنان الحالية:", min_value=0, step=100)
-    
     if st.button("عرض الحالة"):
         check_machine_status(card_num, current_tons, all_sheets)
