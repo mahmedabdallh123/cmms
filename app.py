@@ -207,7 +207,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
 # ===============================
 # 🖥 واجهة Streamlit
 # ===============================
-st.title("🔧 نظام متابعة الصيانة التنبؤية")
+st.title("🔧 سيرفيس تحضيرات بيل يارن 1")
 
 # 🔹 Session State للزر
 if "refresh_data" not in st.session_state:
