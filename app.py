@@ -134,7 +134,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
 
     card_df = all_sheets[card_sheet_name]
 
-    # شريحة الرنج المناسبة
+    # شريحة الرنج المناسبة من ServicePlan
     current_slice = service_plan_df[
         (service_plan_df["Min_Tones"] <= current_tons) &
         (service_plan_df["Max_Tones"] >= current_tons)
@@ -150,20 +150,17 @@ def check_machine_status(card_num, current_tons, all_sheets):
     needed_parts = split_needed_services(needed_service_raw)
     needed_norm = [normalize_name(p) for p in needed_parts]
 
-    # فلترة الخدمات المنفذة ضمن الرنج
-    slice_df = card_df[
-        (card_df["Tones"] >= min_tons) &
-        (card_df["Tones"] <= max_tons)
-    ]
-
     done_services, last_date, last_tons = [], "-", "-"
     extra_done = []
 
-    # كل الصفوف في الشيت
     all_done_services_norm = []
+
+    # فلترة الصفوف حسب Min_Tones و Max_Tones في الشيت نفسه
     for idx, row in card_df.iterrows():
+        row_min = row.get("Min_Tones", row.get("Min_Tones", 0))
+        row_max = row.get("Max_Tones", row.get("Max_Tones", 0))
         row_services = []
-        ignore_cols = ["card", "Tones", "Date", "Min_Tones", "Max_Tones"]
+        ignore_cols = ["card", "Tones", "Min_Tones", "Max_Tones", "Date"]
         for col in card_df.columns:
             if col not in ignore_cols:
                 val = str(row.get(col, "")).strip().lower()
@@ -172,17 +169,14 @@ def check_machine_status(card_num, current_tons, all_sheets):
         row_norm = [normalize_name(c) for c in row_services]
         all_done_services_norm.extend(row_norm)
 
-        # إذا الرنج الحالي
-        if min_tons <= row.get("Tones", 0) <= max_tons:
+        # ضمن الرنج الحالي
+        if row_min <= current_tons <= row_max:
             done_services.extend(row_services)
             last_date = row.get("Date", "-")
             last_tons = row.get("Tones", "-")
 
-    # Not Done
     done_norm = [normalize_name(c) for c in done_services]
     not_done = [orig for orig, n in zip(needed_parts, needed_norm) if n not in done_norm]
-
-    # Extra Done
     extra_done = [orig for orig, n in zip(needed_parts, needed_norm) if n in all_done_services_norm and n not in done_norm]
 
     result = {
@@ -208,7 +202,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
 # ===============================
 st.title("🔧 نظام متابعة الصيانة التنبؤية")
 
-# زر تحديث الكاش بطريقة آمنة
+# زر تحديث الكاش
 if "refresh" not in st.session_state:
     st.session_state["refresh"] = False
 
