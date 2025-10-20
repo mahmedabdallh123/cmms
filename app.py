@@ -146,6 +146,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
 
     needed_service_raw = current_slice["Service"].values[0]
     needed_parts = split_needed_services(needed_service_raw)
+    needed_norm = [normalize_name(p) for p in needed_parts]
 
     done_services, last_date, last_tons = [], "-", "-"
 
@@ -162,11 +163,12 @@ def check_machine_status(card_num, current_tons, all_sheets):
                     val = str(row.get(col, "")).strip()
                     if val and val.lower() not in ["nan", "none", ""]:
                         row_done.append(col)
-            done_services.extend([c for c in row_done if c in needed_parts])
+            done_services.extend(row_done)
             last_date = row.get("Date", "-")
             last_tons = row.get("Tones", "-")
 
-    not_done = [s for s in needed_parts if s not in done_services]
+    done_norm = [normalize_name(c) for c in done_services]
+    not_done = [orig for orig, n in zip(needed_parts, needed_norm) if n not in done_norm]
 
     result = {
         "Card": card_num,
@@ -190,23 +192,8 @@ def check_machine_status(card_num, current_tons, all_sheets):
 # ===============================
 st.title("🔧 نظام متابعة الصيانة التنبؤية")
 
-# زر تحديث الكاش
-if "refresh" not in st.session_state:
-    st.session_state["refresh"] = False
-
-if st.button("🔄 تحديث البيانات من GitHub"):
-    st.cache_data.clear()
-    st.session_state["refresh"] = True
-
-if st.session_state["refresh"]:
-    st.session_state["refresh"] = False
+if check_free_trial(user_id="default_user") or st.session_state.get("access_granted", False):
     all_sheets = load_all_sheets()
-else:
-    if check_free_trial(user_id="default_user") or st.session_state.get("access_granted", False):
-        all_sheets = load_all_sheets()
-
-# إدخال بيانات الماكينة
-if 'all_sheets' in locals():
     st.write("أدخل رقم الماكينة وعدد الأطنان الحالية لمعرفة حالة الصيانة")
     card_num = st.number_input("رقم الماكينة:", min_value=1, step=1)
     current_tons = st.number_input("عدد الأطنان الحالية:", min_value=0, step=100)
