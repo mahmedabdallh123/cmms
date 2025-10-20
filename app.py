@@ -4,7 +4,7 @@ import pandas as pd
 # ===============================
 # 📦 رابط ملف Excel على GitHub
 # ===============================
-GITHUB_EXCEL_URL = "https://github.com/mahmedabdallh123/cmms/raw/refs/heads/main/Machine_Service_Lookup.xlsx"
+GITHUB_EXCEL_URL = "https://raw.githubusercontent.com/mahmedabdallh123/cmms/main/Machine_Service_Lookup.xlsx"
 
 # ===============================
 # ⚙️ تحميل جميع الشيتات من GitHub
@@ -31,16 +31,13 @@ def get_required_service(service_df, tones):
 # 🧮 مقارنة المطلوب مع المنفذ في شيت الماكينة
 # ===============================
 def compare_services(required_service, machine_df):
-    # استخراج الخدمات المطلوبة من النص
     required_list = [x.strip() for x in str(required_service).split("+")]
-
-    # الأعمدة اللي فيها علامة ✔ تعتبر منفذة
     done_services = []
+
     for col in machine_df.columns:
         if machine_df[col].astype(str).str.contains("✔").any():
             done_services.append(col)
 
-    # مقارنة المطلوب مع المنفذ
     done = [s for s in required_list if any(d in s for d in done_services)]
     not_done = [s for s in required_list if s not in done]
     return done, not_done
@@ -51,6 +48,7 @@ def compare_services(required_service, machine_df):
 st.set_page_config(page_title="CMMS - Mini System", layout="wide")
 st.title("🧰 Mini CMMS - نظام الصيانة المصغر")
 
+# تحميل البيانات
 all_sheets = load_all_sheets()
 if not all_sheets:
     st.stop()
@@ -60,7 +58,7 @@ service_plan = all_sheets.get("ServicePlan")
 machine_table = all_sheets.get("Machine")
 
 if not all([service_plan is not None, machine_table is not None]):
-    st.error("❌ تأكد أن الشيتات داخل الملف فيها 'ServicePlan' و 'Machine'")
+    st.error("❌ تأكد أن الملف يحتوي على شيتين باسم 'ServicePlan' و 'Machine'")
     st.stop()
 
 # إدخال المستخدم
@@ -79,21 +77,22 @@ if st.button("🔍 تحليل الصيانة"):
 
         done, not_done = compare_services(required_service, machine_df)
 
-        st.subheader("✅ الصيانات المنفذة:")
-        if done:
-            st.success(", ".join(done))
-        else:
-            st.info("لا توجد صيانات منفذة مطابقة.")
-
-        st.subheader("❌ الصيانات غير المنفذة:")
-        if not_done:
-            st.warning(", ".join(not_done))
-        else:
-            st.success("كل الصيانات المطلوبة تم تنفيذها ✅")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("✅ الصيانات المنفذة:")
+            if done:
+                st.success(", ".join(done))
+            else:
+                st.info("لا توجد صيانات منفذة مطابقة.")
+        with col2:
+            st.subheader("❌ الصيانات غير المنفذة:")
+            if not_done:
+                st.warning(", ".join(not_done))
+            else:
+                st.success("كل الصيانات المطلوبة تم تنفيذها ✅")
 
         with st.expander("📄 عرض سجل الماكينة"):
             st.dataframe(machine_df)
 
     else:
         st.error(f"❌ لم يتم العثور على شيت باسم {machine_sheet_name} في الملف.")
-
