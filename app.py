@@ -18,7 +18,7 @@ RENEW_HOURS = 24
 PASSWORD = "1234"
 
 # ===============================
-# 📂 تحميل البيانات من GitHub مع تنظيف الأعمدة
+# 📂 تحميل البيانات من GitHub
 # ===============================
 @st.cache_data
 def load_all_sheets():
@@ -133,6 +133,8 @@ def check_machine_status(card_num, current_tons, all_sheets):
         return
 
     card_df = all_sheets[card_sheet_name]
+
+    # شريحة الرنج المناسبة
     current_slice = service_plan_df[
         (service_plan_df["Min_Tones"] <= current_tons) &
         (service_plan_df["Max_Tones"] >= current_tons)
@@ -148,31 +150,40 @@ def check_machine_status(card_num, current_tons, all_sheets):
     needed_parts = split_needed_services(needed_service_raw)
     needed_norm = [normalize_name(p) for p in needed_parts]
 
+    # فلترة الخدمات المنفذة ضمن الرنج
     slice_df = card_df[
-        (card_df["card"] == card_num) &
         (card_df["Tones"] >= min_tons) &
         (card_df["Tones"] <= max_tons)
     ]
 
     done_services, last_date, last_tons = [], "-", "-"
-    status = "❌ لم يتم تنفيذ صيانة في هذه الشريحة"
+    extra_done = []
 
-    if not slice_df.empty:
-        last_row = slice_df.iloc[-1]
-        last_date = last_row.get("Date", "-")
-        last_tons = last_row.get("Tones", "-")
-
-        ignore_cols = ["card", "Tones", "Date", "Current_Tones", "Service Needed", "Min_Tones", "Max_Tones"]
+    # كل الصفوف في الشيت
+    all_done_services_norm = []
+    for idx, row in card_df.iterrows():
+        row_services = []
+        ignore_cols = ["card", "Tones", "Date", "Min_Tones", "Max_Tones"]
         for col in card_df.columns:
             if col not in ignore_cols:
-                val = str(last_row.get(col, "")).strip().lower()
+                val = str(row.get(col, "")).strip().lower()
                 if val and val not in ["nan", "none", ""]:
-                    done_services.append(col)
-        if done_services:
-            status = "✅ تم تنفيذ صيانة في هذه الشريحة"
+                    row_services.append(col)
+        row_norm = [normalize_name(c) for c in row_services]
+        all_done_services_norm.extend(row_norm)
 
+        # إذا الرنج الحالي
+        if min_tons <= row.get("Tones", 0) <= max_tons:
+            done_services.extend(row_services)
+            last_date = row.get("Date", "-")
+            last_tons = row.get("Tones", "-")
+
+    # Not Done
     done_norm = [normalize_name(c) for c in done_services]
     not_done = [orig for orig, n in zip(needed_parts, needed_norm) if n not in done_norm]
+
+    # Extra Done
+    extra_done = [orig for orig, n in zip(needed_parts, needed_norm) if n in all_done_services_norm and n not in done_norm]
 
     result = {
         "Card": card_num,
@@ -180,9 +191,9 @@ def check_machine_status(card_num, current_tons, all_sheets):
         "Service Needed": " + ".join(needed_parts) if needed_parts else "-",
         "Done Services": ", ".join(done_services) if done_services else "-",
         "Not Done Services": ", ".join(not_done) if not_done else "-",
+        "Extra Done": ", ".join(extra_done) if extra_done else "-",
         "Date": last_date,
         "Tones": last_tons,
-        "Status": status,
     }
 
     result_df = pd.DataFrame([result])
@@ -197,9 +208,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
 # ===============================
 st.title("🔧 نظام متابعة الصيانة التنبؤية")
 
-# ===============================
-# ✅ زر تحديث الكاش بطريقة آمنة على Cloud
-# ===============================
+# زر تحديث الكاش بطريقة آمنة
 if "refresh" not in st.session_state:
     st.session_state["refresh"] = False
 
@@ -209,19 +218,15 @@ if st.button("🔄 تحديث البيانات من GitHub"):
 
 if st.session_state["refresh"]:
     st.session_state["refresh"] = False
-    all_sheets = load_all_sheets()  # تحميل البيانات بعد مسح الكاش
+    all_sheets = load_all_sheets()
 else:
     if check_free_trial(user_id="default_user") or st.session_state.get("access_granted", False):
-        all_sheets = load_all_sheets()  # تحميل البيانات بعد التحقق من الوصول
+        all_sheets = load_all_sheets()
 
-# ===============================
-# ✅ إدخال بيانات الماكينة
-# ===============================
+# إدخال بيانات الماكينة
 if 'all_sheets' in locals():
     st.write("أدخل رقم الماكينة وعدد الأطنان الحالية لمعرفة حالة الصيانة")
-    
     card_num = st.number_input("رقم الماكينة:", min_value=1, step=1)
     current_tons = st.number_input("عدد الأطنان الحالية:", min_value=0, step=100)
-    
     if st.button("عرض الحالة"):
         check_machine_status(card_num, current_tons, all_sheets)
