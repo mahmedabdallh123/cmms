@@ -20,7 +20,7 @@ PASSWORD = "1234"
 # ===============================
 # 📂 تحميل البيانات من GitHub
 # ===============================
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def load_all_sheets():
     try:
         local_file = "Machine_Service_Lookup.xlsx"
@@ -208,6 +208,11 @@ def check_machine_status(card_num, current_tons, all_sheets):
 # 🖥 واجهة Streamlit
 # ===============================
 st.title("🔧 نظام متابعة الصيانة التنبؤية")
+
+# 🔹 زر تحديث البيانات من GitHub
+if st.button("🔄 تحديث البيانات من GitHub"):
+    load_all_sheets.clear()
+    st.experimental_rerun()
 
 if check_free_trial(user_id="default_user") or st.session_state.get("access_granted", False):
     all_sheets = load_all_sheets()
