@@ -144,40 +144,32 @@ def check_machine_status(card_num, current_tons, all_sheets):
         st.warning("⚠ لم يتم العثور على شريحة تناسب عدد الأطنان الحالي.")
         return
 
-    min_tons = current_slice["Min_Tones"].values[0]
-    max_tons = current_slice["Max_Tones"].values[0]
     needed_service_raw = current_slice["Service"].values[0]
     needed_parts = split_needed_services(needed_service_raw)
-    needed_norm = [normalize_name(p) for p in needed_parts]
 
     done_services, last_date, last_tons = [], "-", "-"
     extra_done = []
 
-    all_done_services_norm = []
-
-    # فلترة الصفوف حسب Min_Tones و Max_Tones في الشيت نفسه
+    # فلترة الصفوف حسب الرنج الحالي للشيت نفسه
     for idx, row in card_df.iterrows():
-        row_min = row.get("Min_Tones", row.get("Min_Tones", 0))
-        row_max = row.get("Max_Tones", row.get("Max_Tones", 0))
-        row_services = []
-        ignore_cols = ["card", "Tones", "Min_Tones", "Max_Tones", "Date"]
-        for col in card_df.columns:
-            if col not in ignore_cols:
-                val = str(row.get(col, "")).strip().lower()
-                if val and val not in ["nan", "none", ""]:
-                    row_services.append(col)
-        row_norm = [normalize_name(c) for c in row_services]
-        all_done_services_norm.extend(row_norm)
+        row_min = row.get("Min_Tones", 0)
+        row_max = row.get("Max_Tones", 0)
 
-        # ضمن الرنج الحالي
+        # بس الصفوف اللي ضمن الرنج الحالي
         if row_min <= current_tons <= row_max:
-            done_services.extend(row_services)
+            row_done = []
+            ignore_cols = ["card", "Tones", "Min_Tones", "Max_Tones", "Date"]
+            for col in card_df.columns:
+                if col not in ignore_cols:
+                    val = str(row.get(col, "")).strip()
+                    if val and val.lower() not in ["nan", "none", ""]:
+                        row_done.append(col)
+            done_services.extend([c for c in row_done if c in needed_parts])
+            extra_done.extend([c for c in row_done if c not in needed_parts])
             last_date = row.get("Date", "-")
             last_tons = row.get("Tones", "-")
 
-    done_norm = [normalize_name(c) for c in done_services]
-    not_done = [orig for orig, n in zip(needed_parts, needed_norm) if n not in done_norm]
-    extra_done = [orig for orig, n in zip(needed_parts, needed_norm) if n in all_done_services_norm and n not in done_norm]
+    not_done = [s for s in needed_parts if s not in done_services]
 
     result = {
         "Card": card_num,
