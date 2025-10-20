@@ -148,14 +148,12 @@ def check_machine_status(card_num, current_tons, all_sheets):
     needed_parts = split_needed_services(needed_service_raw)
 
     done_services, last_date, last_tons = [], "-", "-"
-    extra_done = []
 
     # فلترة الصفوف حسب الرنج الحالي للشيت نفسه
     for idx, row in card_df.iterrows():
         row_min = row.get("Min_Tones", 0)
         row_max = row.get("Max_Tones", 0)
 
-        # بس الصفوف اللي ضمن الرنج الحالي
         if row_min <= current_tons <= row_max:
             row_done = []
             ignore_cols = ["card", "Tones", "Min_Tones", "Max_Tones", "Date"]
@@ -165,7 +163,6 @@ def check_machine_status(card_num, current_tons, all_sheets):
                     if val and val.lower() not in ["nan", "none", ""]:
                         row_done.append(col)
             done_services.extend([c for c in row_done if c in needed_parts])
-            extra_done.extend([c for c in row_done if c not in needed_parts])
             last_date = row.get("Date", "-")
             last_tons = row.get("Tones", "-")
 
@@ -177,7 +174,6 @@ def check_machine_status(card_num, current_tons, all_sheets):
         "Service Needed": " + ".join(needed_parts) if needed_parts else "-",
         "Done Services": ", ".join(done_services) if done_services else "-",
         "Not Done Services": ", ".join(not_done) if not_done else "-",
-        "Extra Done": ", ".join(extra_done) if extra_done else "-",
         "Date": last_date,
         "Tones": last_tons,
     }
