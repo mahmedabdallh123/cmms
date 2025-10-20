@@ -143,7 +143,7 @@ def split_needed_services(needed_service_str):
 # ===============================
 # ⚙ دالة مقارنة الصيانة
 # ===============================
-def check_machine_status(card_num, current_tons, all_sheets):
+def check_machine_status(card_num, current_tones, all_sheets):
     if "ServicePlan" not in all_sheets or "Machine" not in all_sheets:
         st.error("❌ الملف لازم يحتوي على شيتين: 'Machine' و 'ServicePlan'")
         return None
@@ -156,27 +156,27 @@ def check_machine_status(card_num, current_tons, all_sheets):
 
     # ✅ تم التصحيح هنا (Min_Tones بدل Min_Tons)
     current_slice = service_plan_df[
-        (service_plan_df["Min_Tones"] <= current_tons) &
-        (service_plan_df["Max_Tones"] >= current_tons)
+        (service_plan_df["Min_Tones"] <= current_tones) &
+        (service_plan_df["Max_Tones"] >= current_tones)
     ]
 
     if current_slice.empty:
         st.warning("⚠ لم يتم العثور على شريحة تناسب عدد الأطنان الحالي.")
         return None
 
-    min_tons = current_slice["Min_Tones"].values[0]
-    max_tons = current_slice["Max_Tones"].values[0]
+    min_tones = current_slice["Min_Tones"].values[0]
+    max_tones = current_slice["Max_Tones"].values[0]
     needed_service_raw = current_slice["Service"].values[0]
     needed_parts = split_needed_services(needed_service_raw)
     needed_norm = [normalize_name(p) for p in needed_parts]
 
     card_df = all_sheets[card_sheet_name]
     slice_df = card_df[
-        (card_df["Min_Tones"] == min_tons) &
-        (card_df["Max_Tones"] == max_tons)
+        (card_df["Min_Tones"] == min_tones) &
+        (card_df["Max_Tones"] == max_tones)
     ]
 
-    done_services, last_date, last_tons = [], "-", "-"
+    done_services, last_date, last_tones = [], "-", "-"
     status = "❌ لم يتم تنفيذ صيانة في هذه الشريحة"
 
     if not slice_df.empty:
@@ -198,12 +198,12 @@ def check_machine_status(card_num, current_tons, all_sheets):
 
     result = {
         "Card": card_num,
-        "Current_Tons": current_tons,
+        "Current_Tones": current_tones,
         "Service Needed": " + ".join(needed_parts) if needed_parts else "-",
         "Done Services": ", ".join(done_services) if done_services else "-",
         "Not Done Services": ", ".join(not_done) if not_done else "-",
         "Date": last_date,
-        "Tones": last_tons,
+        "Tones": last_tones,
         "Status": status,
     }
 
@@ -238,6 +238,6 @@ if check_free_trial(user_id="default_user") or st.session_state.get("access_gran
     all_sheets = load_all_sheets()
     st.write("أدخل رقم الماكينة وعدد الأطنان الحالية لمعرفة حالة الصيانة")
     card_num = st.number_input("رقم الماكينة:", min_value=1, step=1)
-    current_tons = st.number_input("عدد الأطنان الحالية:", min_value=0, step=100)
+    current_tones = st.number_input("عدد الأطنان الحالية:", min_value=0, step=100)
     if st.button("عرض الحالة"):
         check_machine_status(card_num, current_tons, all_sheets)
