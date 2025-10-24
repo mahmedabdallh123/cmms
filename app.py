@@ -1,20 +1,13 @@
 import streamlit as st
 import pandas as pd
 import re
-import time
-import json
-import os
-import streamlit.components.v1 as components
 import requests
 import shutil
 
 # ===============================
 # ⚙️ إعدادات أساسية
 # ===============================
-GITHUB_EXCEL_URL = "https://github.com/mahmedabdallh123/cmms/raw/refs/heads/main/Machine_Service_Lookup.xlsx"
-TOKENS_FILE = "tokens.json"
-TRIAL_SECONDS = 60
-RENEW_HOURS = 24
+GITHUB_EXCEL_URL = https://github.com/mahmedabdallh123/cmms/raw/refs/heads/main/Machine_Service_Lookup.xlsx
 PASSWORD = "1234"
 
 # ===============================
@@ -36,72 +29,53 @@ def load_all_sheets():
         st.stop()
 
 # ===============================
-# 🔑 نظام التجربة المجانية
+# 🎨 واجهة تسجيل الدخول بالباسورد فقط
 # ===============================
-def load_tokens():
-    if not os.path.exists(TOKENS_FILE):
-        with open(TOKENS_FILE, "w") as f:
-            json.dump({}, f)
-        return {}
-    try:
-        with open(TOKENS_FILE, "r") as f:
-            content = f.read().strip()
-            if not content:
-                return {}
-            return json.loads(content)
-    except (json.JSONDecodeError, ValueError):
-        with open(TOKENS_FILE, "w") as f:
-            json.dump({}, f)
-        return {}
-
-def save_tokens(tokens):
-    with open(TOKENS_FILE, "w") as f:
-        json.dump(tokens, f, indent=4, ensure_ascii=False)
-
-def check_free_trial(user_id="default_user"):
-    tokens = load_tokens()
-    now_ts = int(time.time())
-
-    if user_id not in tokens:
-        tokens[user_id] = {"last_trial": 0}
-        save_tokens(tokens)
-
-    last_trial = tokens[user_id]["last_trial"]
-    hours_since_last = (now_ts - last_trial) / 3600
-
-    if "trial_start" in st.session_state:
-        elapsed = now_ts - st.session_state["trial_start"]
-        if elapsed < TRIAL_SECONDS:
-            st.info(f"✅ التجربة المجانية مفعّلة — متبقي {TRIAL_SECONDS - elapsed:.0f} ثانية")
-            return True
-        else:
-            st.warning("⏰ انتهت التجربة المجانية. يمكنك إعادة التجربة بعد 24 ساعة أو الدخول بالباسورد.")
-            password = st.text_input("أدخل كلمة المرور للوصول:", type="password")
-            if password == PASSWORD:
-                st.session_state["access_granted"] = True
-                st.success("✅ تم تسجيل الدخول بالباسورد.")
-                return True
-            return False
-
-    if hours_since_last >= RENEW_HOURS:
-        if st.button("تفعيل التجربة المجانية 60 ثانية"):
-            tokens[user_id]["last_trial"] = now_ts
-            save_tokens(tokens)
-            st.session_state["trial_start"] = now_ts
-            st.experimental_rerun()
-        return False
-
-    remaining_hours = max(0, RENEW_HOURS - hours_since_last)
-    st.warning(f"🔒 انتهت التجربة المجانية. يمكنك إعادة التجربة بعد {remaining_hours:.1f} ساعة أو الدخول بالباسورد.")
-    password = st.text_input("أدخل كلمة المرور للوصول:", type="password")
-    if password == PASSWORD:
-        st.session_state["access_granted"] = True
-        st.success("✅ تم تسجيل الدخول بالباسورد.")
+def check_access():
+    if st.session_state.get("access_granted", False):
         return True
+
+    # تصميم الكارت
+    st.markdown(
+        """
+        <style>
+        .login-box {
+            background-color: #f9f9f9;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            width: 380px;
+            margin: 120px auto;
+            text-align: center;
+        }
+        .login-title {
+            font-size: 26px;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<div class="login-box"><div class="login-title">🔒 تسجيل الدخول</div>', unsafe_allow_html=True)
+
+    password = st.text_input("أدخل كلمة المرور للوصول:", type="password")
+
+    if st.button("تأكيد الدخول"):
+        if password == PASSWORD:
+            st.session_state["access_granted"] = True
+            st.success("✅ تم تسجيل الدخول بنجاح.")
+            st.rerun()
+        else:
+            st.error("❌ كلمة المرور غير صحيحة.")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
     return False
 
 # ===============================
-# 🔠 دوال مساعدة
+# 🧰 دوال النظام
 # ===============================
 def normalize_name(s):
     if s is None:
@@ -118,9 +92,6 @@ def split_needed_services(needed_service_str):
     parts = re.split(r"\+|,|\n|;", needed_service_str)
     return [p.strip() for p in parts if p.strip() != ""]
 
-# ===============================
-# ⚙ دالة مقارنة الصيانة مع تلوين الأعمدة
-# ===============================
 def check_machine_status(card_num, current_tons, all_sheets):
     if "ServicePlan" not in all_sheets or "Machine" not in all_sheets:
         st.error("❌ الملف لازم يحتوي على شيتين: 'Machine' و 'ServicePlan'")
@@ -133,8 +104,6 @@ def check_machine_status(card_num, current_tons, all_sheets):
         return
 
     card_df = all_sheets[card_sheet_name]
-
-    # شريحة الرنج المناسبة من ServicePlan
     current_slice = service_plan_df[
         (service_plan_df["Min_Tones"] <= current_tons) &
         (service_plan_df["Max_Tones"] >= current_tons)
@@ -149,12 +118,9 @@ def check_machine_status(card_num, current_tons, all_sheets):
     needed_norm = [normalize_name(p) for p in needed_parts]
 
     done_services, last_date, last_tons = [], "-", "-"
-
-    # فلترة الصفوف حسب الرنج الحالي للشيت نفسه
     for idx, row in card_df.iterrows():
         row_min = row.get("Min_Tones", 0)
         row_max = row.get("Max_Tones", 0)
-
         if row_min <= current_tons <= row_max:
             row_done = []
             ignore_cols = ["card", "Tones", "Min_Tones", "Max_Tones", "Date"]
@@ -182,16 +148,15 @@ def check_machine_status(card_num, current_tons, all_sheets):
 
     result_df = pd.DataFrame([result])
 
-    # 🎨 تلوين الأعمدة
     def highlight_cell(val, col_name):
         if col_name == "Service Needed":
-            return "background-color: #fff3cd; color:#856404; font-weight:bold;"  # أصفر
+            return "background-color: #fff3cd; color:#856404; font-weight:bold;"
         elif col_name == "Done Services":
-            return "background-color: #d4edda; color:#155724; font-weight:bold;"  # أخضر
+            return "background-color: #d4edda; color:#155724; font-weight:bold;"
         elif col_name == "Not Done Services":
-            return "background-color: #f8d7da; color:#721c24; font-weight:bold;"  # أحمر
+            return "background-color: #f8d7da; color:#721c24; font-weight:bold;"
         elif col_name in ["Date", "Tones"]:
-            return "background-color: #e7f1ff; color:#004085;"  # أزرق فاتح
+            return "background-color: #e7f1ff; color:#004085;"
         return ""
 
     def style_table(row):
@@ -205,19 +170,17 @@ def check_machine_status(card_num, current_tons, all_sheets):
         st.success("✅ تم حفظ النتيجة في ملف 'Machine_Result.xlsx' بنجاح.")
 
 # ===============================
-# 🖥 واجهة Streamlit
+# 🖥 واجهة البرنامج الرئيسية
 # ===============================
 st.title("🔧 سيرفيس تحضيرات بيل يارن 1")
 
-# 🔹 Session State للزر
 if "refresh_data" not in st.session_state:
     st.session_state["refresh_data"] = False
 
-if st.button("🔄 تحديث البيانات من GitHub"):
+if st.button("refresh data "):
     st.session_state["refresh_data"] = True
 
-if check_free_trial(user_id="default_user") or st.session_state.get("access_granted", False):
-    # تحديث البيانات إذا ضغط الزر
+if check_access():
     if st.session_state["refresh_data"]:
         load_all_sheets.clear()
         st.session_state["refresh_data"] = False
