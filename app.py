@@ -66,6 +66,10 @@ def split_needed_services(needed_service_str):
 # ===============================
 # 🔍 تحليل حالة الماكينة
 # ===============================
+import io
+import streamlit as st
+import pandas as pd
+
 def check_machine_status(card_num, current_tons, all_sheets):
     if not all_sheets or "ServicePlan" not in all_sheets:
         st.error("❌ الملف لا يحتوي على شيت ServicePlan.")
@@ -176,7 +180,30 @@ def check_machine_status(card_num, current_tons, all_sheets):
         })
 
     result_df = pd.DataFrame(all_results)
-    st.dataframe(result_df, use_container_width=True)
+
+    # ✅ تنسيق الألوان حسب الحالة
+    def highlight_row(row):
+        if row["Not Done Services"] != "-" and row["Not Done Services"].strip() != "":
+            return ['background-color: #fff3cd; color: #856404;'] * len(row)  # أصفر = ناقص
+        elif row["Done Services"] != "-" and (row["Not Done Services"] == "-" or not row["Not Done Services"].strip()):
+            return ['background-color: #d4edda; color: #155724;'] * len(row)  # أخضر = كله تمام
+        else:
+            return ['background-color: #f8d7da; color: #721c24;'] * len(row)  # أحمر = لا يوجد بيانات
+
+    styled = result_df.style.apply(highlight_row, axis=1)
+
+    st.markdown("### 📋 نتائج الفحص")
+    st.dataframe(styled, use_container_width=True, height=450)
+
+    # ✅ زر تحميل النتائج كملف Excel
+    buffer = io.BytesIO()
+    result_df.to_excel(buffer, index=False, engine="openpyxl")
+    st.download_button(
+        label="💾 حفظ النتائج كـ Excel",
+        data=buffer.getvalue(),
+        file_name=f"Service_Report_Card{card_num}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 # ===============================
 # 🖥 الواجهة الرئيسية
@@ -203,3 +230,5 @@ if st.button("عرض الحالة"):
 
 if st.session_state.get("show_results", False) and all_sheets:
     check_machine_status(st.session_state.card_num, st.session_state.current_tons, all_sheets)
+
+
