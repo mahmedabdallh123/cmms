@@ -8,7 +8,7 @@ import shutil
 # ⚙️ إعدادات أساسية
 # ===============================
 GITHUB_EXCEL_URL = "https://github.com/mahmedabdallh123/cmms/raw/refs/heads/main/Machine_Service_Lookup.xlsx"
-PASSWORD = "1234"
+PASSWORD = "1224"
 
 # ===============================
 # 📂 تحميل البيانات من GitHub
