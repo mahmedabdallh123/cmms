@@ -4,7 +4,7 @@ import re
 import requests
 import shutil
 import os
-
+import io
 # ===============================
 # ⚙ إعدادات أساسية
 # ===============================
@@ -64,12 +64,6 @@ def split_needed_services(needed_service_str):
     return [p.strip() for p in parts if p.strip() != ""]
 
 # ===============================
-# 🔍 تحليل حالة الماكينة
-# ===============================
-import io
-import streamlit as st
-import pandas as pd
-
 def check_machine_status(card_num, current_tons, all_sheets):
     if not all_sheets or "ServicePlan" not in all_sheets:
         st.error("❌ الملف لا يحتوي على شيت ServicePlan.")
@@ -138,9 +132,11 @@ def check_machine_status(card_num, current_tons, all_sheets):
         done_services_set = set()
         last_date = "-"
         last_tons = "-"
+        last_other = "-"
+        last_servised_by = "-"
 
         if not matching_rows.empty:
-            ignore_cols = {"card", "Tones", "Min_Tones", "Max_Tones", "Date"}
+            ignore_cols = {"card", "Tones", "Min_Tones", "Max_Tones", "Date", "Other", "Servised by"}
             for _, r in matching_rows.iterrows():
                 for col in matching_rows.columns:
                     if col not in ignore_cols:
@@ -148,7 +144,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
                         if val and val.lower() not in ["nan", "none", ""]:
                             done_services_set.add(col)
 
-            # ✅ قراءة التاريخ
+            # ✅ قراءة آخر تاريخ
             if "Date" in matching_rows.columns:
                 try:
                     cleaned_dates = matching_rows["Date"].astype(str).str.replace("\\", "/", regex=False)
@@ -160,10 +156,19 @@ def check_machine_status(card_num, current_tons, all_sheets):
                 except Exception:
                     last_date = "-"
 
+            # ✅ قراءة آخر طن
             if "Tones" in matching_rows.columns:
                 tons_vals = pd.to_numeric(matching_rows["Tones"], errors="coerce")
                 if tons_vals.notna().any():
                     last_tons = int(tons_vals.max())
+
+            # ✅ قراءة عمود Other
+            if "Other" in matching_rows.columns:
+                last_other = str(matching_rows["Other"].dropna().iloc[-1]) if matching_rows["Other"].notna().any() else "-"
+
+            # ✅ قراءة عمود Servised by
+            if "Servised by" in matching_rows.columns:
+                last_servised_by = str(matching_rows["Servised by"].dropna().iloc[-1]) if matching_rows["Servised by"].notna().any() else "-"
 
         done_services = sorted(list(done_services_set))
         done_norm = [normalize_name(c) for c in done_services]
@@ -177,25 +182,27 @@ def check_machine_status(card_num, current_tons, all_sheets):
             "Not Done Services": ", ".join(not_done) if not_done else "-",
             "Last Date": last_date,
             "Last Tones": last_tons,
+            "Other": last_other,
+            "Servised by": last_servised_by
         })
 
     result_df = pd.DataFrame(all_results)
 
-    # ✅ تنسيق الألوان حسب الحالة
+    # ✅ تلوين حسب الحالة
     def highlight_row(row):
         if row["Not Done Services"] != "-" and row["Not Done Services"].strip() != "":
             return ['background-color: #fff3cd; color: #856404;'] * len(row)  # أصفر = ناقص
         elif row["Done Services"] != "-" and (row["Not Done Services"] == "-" or not row["Not Done Services"].strip()):
-            return ['background-color: #d4edda; color: #155724;'] * len(row)  # أخضر = كله تمام
+            return ['background-color: #d4edda; color: #155724;'] * len(row)  # أخضر = تمام
         else:
-            return ['background-color: #f8d7da; color: #721c24;'] * len(row)  # أحمر = لا يوجد بيانات
+            return ['background-color: #f8d7da; color: #721c24;'] * len(row)  # أحمر = فاضي
 
     styled = result_df.style.apply(highlight_row, axis=1)
 
     st.markdown("### 📋 نتائج الفحص")
-    st.dataframe(styled, use_container_width=True, height=450)
+    st.dataframe(styled, use_container_width=True, height=500)
 
-    # ✅ زر تحميل النتائج كملف Excel
+    # ✅ تحميل النتائج
     buffer = io.BytesIO()
     result_df.to_excel(buffer, index=False, engine="openpyxl")
     st.download_button(
