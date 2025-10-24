@@ -1,10 +1,62 @@
 import streamlit as st
 import pandas as pd
-import re
-import requests
-import shutil
+import json
 import os
 import io
+import requests
+import shutil
+import re
+
+# ===============================
+# 🔐 نظام تسجيل الدخول (يُكتب بعد المكتبات)
+# ===============================
+def load_users():
+    with open("state.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_users(data):
+    with open("state.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+def login():
+    st.title("🔐 تسجيل الدخول - Bail Yarn")
+    username = st.text_input("اسم المستخدم:")
+    password = st.text_input("كلمة المرور:", type="password")
+    if st.button("تسجيل الدخول"):
+        users = load_users()
+        if username in users and users[username]["password"] == password:
+            if not users[username].get("active", False):
+                users[username]["active"] = True
+                save_users(users)
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.success(f"✅ تم تسجيل الدخول بنجاح كـ {username}")
+                st.rerun()
+            else:
+                st.error("⚠ هذا المستخدم مسجّل دخول بالفعل من جهاز آخر.")
+        else:
+            st.error("❌ اسم المستخدم أو كلمة المرور غير صحيحة.")
+
+def logout():
+    if "username" in st.session_state:
+        users = load_users()
+        user = st.session_state["username"]
+        if user in users:
+            users[user]["active"] = False
+            save_users(users)
+    st.session_state.clear()
+    st.rerun()
+
+# التحقق من حالة تسجيل الدخول
+if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
+    login()
+    st.stop()
+
+st.sidebar.button("🚪 تسجيل الخروج", on_click=logout)
+
+# ===============================
+# ⬇ هنا يبدأ الكود العادي للتطبيق (باقي الكود)
+# ===============================
 # ===============================
 # ⚙ إعدادات أساسية
 # ===============================
@@ -248,7 +300,6 @@ if st.button("عرض الحالة"):
 
 if st.session_state.get("show_results", False) and all_sheets:
     check_machine_status(st.session_state.card_num, st.session_state.current_tons, all_sheets)
-
 
 
 
