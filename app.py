@@ -3,23 +3,45 @@ import pandas as pd
 import re
 import requests
 import shutil
+import os
 
 # ===============================
-# ⚙️ إعدادات أساسية
+# ⚙ إعدادات أساسية
 # ===============================
-GITHUB_EXCEL_URL = "https://github.com/mahmedabdallh123/cmms/raw/refs/heads/main/Machine_Service_Lookup.xlsx"
+GITHUB_EXCEL_URL = "https://github.com/mahmedabdallh123/NEW-CMMS/raw/refs/heads/main/Machine_Service_Lookup.xlsx"
 PASSWORD = "1224"
+LOCAL_FILE = "Machine_Service_Lookup.xlsx"
 
 # ===============================
-# 📂 تحميل البيانات من GitHub
+# 🔄 تحديث الملف من GitHub
+# ===============================
+def fetch_from_github():
+    """تحميل الملف من GitHub وتحديث النسخة المحلية"""
+    try:
+        response = requests.get(GITHUB_EXCEL_URL, stream=True, timeout=10)
+        response.raise_for_status()
+        with open(LOCAL_FILE, "wb") as f:
+            shutil.copyfileobj(response.raw, f)
+
+        # ✅ تنظيف الكاش بعد التحديث
+        st.cache_data.clear()
+        st.session_state["last_update"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        st.success("✅ تم تحديث البيانات من GitHub بنجاح وتم مسح الكاش.")
+    except Exception as e:
+        st.error(f"⚠ فشل التحديث من GitHub: {e}")
+
+# ===============================
+# 📂 تحميل البيانات (من الملف المحلي فقط)
 # ===============================
 @st.cache_data(show_spinner=False)
 def load_all_sheets():
-    local_file = "Machine_Service_Lookup.xlsx"
-    r = requests.get(GITHUB_EXCEL_URL, stream=True)
-    with open(local_file, 'wb') as f:
-        shutil.copyfileobj(r.raw, f)
-    sheets = pd.read_excel(local_file, sheet_name=None)
+    """تحميل كل الشيتات من الملف المحلي"""
+    if not os.path.exists(LOCAL_FILE):
+        st.error("❌ الملف المحلي غير موجود. برجاء الضغط على زر التحديث أولًا.")
+        return None
+
+    sheets = pd.read_excel(LOCAL_FILE, sheet_name=None)
     for name, df in sheets.items():
         df.columns = df.columns.str.strip()
     return sheets
@@ -45,18 +67,20 @@ def split_needed_services(needed_service_str):
 # 🔍 تحليل حالة الماكينة
 # ===============================
 def check_machine_status(card_num, current_tons, all_sheets):
-    if "ServicePlan" not in all_sheets:
-        st.error("❌ الملف لازم يحتوي على شيت 'ServicePlan'")
+    if not all_sheets or "ServicePlan" not in all_sheets:
+        st.error("❌ الملف لا يحتوي على شيت ServicePlan.")
         return
 
     service_plan_df = all_sheets["ServicePlan"]
     card_sheet_name = f"Card{card_num}"
+
     if card_sheet_name not in all_sheets:
         st.warning(f"⚠ لا يوجد شيت باسم {card_sheet_name}")
         return
+
     card_df = all_sheets[card_sheet_name]
 
-    # حفظ اختيار النطاق في session
+    # حفظ اختيار النطاق
     if "view_option" not in st.session_state:
         st.session_state.view_option = "الشريحة الحالية فقط"
 
@@ -68,7 +92,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
         key="view_option"
     )
 
-    # النطاق المخصص
+    # نطاق مخصص
     min_range = st.session_state.get("min_range", max(0, current_tons - 500))
     max_range = st.session_state.get("max_range", current_tons + 500)
 
@@ -82,19 +106,13 @@ def check_machine_status(card_num, current_tons, all_sheets):
 
     # تحديد الشرائح المطلوبة
     if view_option == "الشريحة الحالية فقط":
-        selected_slices = service_plan_df[
-            (service_plan_df["Min_Tones"] <= current_tons) &
-            (service_plan_df["Max_Tones"] >= current_tons)
-        ]
+        selected_slices = service_plan_df[(service_plan_df["Min_Tones"] <= current_tons) & (service_plan_df["Max_Tones"] >= current_tons)]
     elif view_option == "كل الشرائح الأقل":
         selected_slices = service_plan_df[service_plan_df["Max_Tones"] <= current_tons]
     elif view_option == "كل الشرائح الأعلى":
         selected_slices = service_plan_df[service_plan_df["Min_Tones"] >= current_tons]
     elif view_option == "نطاق مخصص":
-        selected_slices = service_plan_df[
-            (service_plan_df["Min_Tones"] >= min_range) &
-            (service_plan_df["Max_Tones"] <= max_range)
-        ]
+        selected_slices = service_plan_df[(service_plan_df["Min_Tones"] >= min_range) & (service_plan_df["Max_Tones"] <= max_range)]
     else:
         selected_slices = service_plan_df.copy()
 
@@ -106,15 +124,11 @@ def check_machine_status(card_num, current_tons, all_sheets):
     for _, current_slice in selected_slices.iterrows():
         slice_min = current_slice["Min_Tones"]
         slice_max = current_slice["Max_Tones"]
-
         needed_service_raw = current_slice.get("Service", "")
         needed_parts = split_needed_services(needed_service_raw)
         needed_norm = [normalize_name(p) for p in needed_parts]
 
-        mask = (
-            (card_df.get("Min_Tones", 0).fillna(0) <= slice_max) &
-            (card_df.get("Max_Tones", 0).fillna(0) >= slice_min)
-        )
+        mask = (card_df.get("Min_Tones", 0).fillna(0) <= slice_max) & (card_df.get("Max_Tones", 0).fillna(0) >= slice_min)
         matching_rows = card_df[mask]
 
         done_services_set = set()
@@ -130,34 +144,22 @@ def check_machine_status(card_num, current_tons, all_sheets):
                         if val and val.lower() not in ["nan", "none", ""]:
                             done_services_set.add(col)
 
-            # ✅ قراءة التاريخ بعد استبدال "\" بـ "/"
+            # ✅ قراءة التاريخ
             if "Date" in matching_rows.columns:
                 try:
-                    # تنظيف القيم
                     cleaned_dates = matching_rows["Date"].astype(str).str.replace("\\", "/", regex=False)
                     dates = pd.to_datetime(cleaned_dates, errors="coerce", dayfirst=True)
-
                     if dates.notna().any():
                         idx = dates.idxmax()
                         parsed_date = dates.loc[idx]
-                        if pd.notna(parsed_date):
-                            last_date = parsed_date.strftime("%d/%m/%Y")
-                        else:
-                            last_date = "-"
-                    else:
-                        last_date = "-"
-                except Exception as e:
-                    st.write("⚠ خطأ أثناء قراءة التاريخ:", e)
+                        last_date = parsed_date.strftime("%d/%m/%Y") if pd.notna(parsed_date) else "-"
+                except Exception:
                     last_date = "-"
 
-            # آخر أطنان
             if "Tones" in matching_rows.columns:
-                try:
-                    tons_vals = pd.to_numeric(matching_rows["Tones"], errors="coerce")
-                    if tons_vals.notna().any():
-                        last_tons = int(tons_vals.max())
-                except Exception:
-                    last_tons = "-"
+                tons_vals = pd.to_numeric(matching_rows["Tones"], errors="coerce")
+                if tons_vals.notna().any():
+                    last_tons = int(tons_vals.max())
 
         done_services = sorted(list(done_services_set))
         done_norm = [normalize_name(c) for c in done_services]
@@ -174,26 +176,19 @@ def check_machine_status(card_num, current_tons, all_sheets):
         })
 
     result_df = pd.DataFrame(all_results)
+    st.dataframe(result_df, use_container_width=True)
 
-    # 🎨 تنسيق الجدول
-    def highlight_cell(val, col_name):
-        if col_name == "Service Needed":
-            return "background-color: #fff3cd; color:#856404; font-weight:bold;"
-        elif col_name == "Done Services":
-            return "background-color: #d4edda; color:#155724; font-weight:bold;"
-        elif col_name == "Not Done Services":
-            return "background-color: #f8d7da; color:#721c24; font-weight:bold;"
-        elif col_name in ["Last Date", "Last Tones"]:
-            return "background-color: #e7f1ff; color:#004085;"
-        return ""
-
-    def style_table(row):
-        return [highlight_cell(row[col], col) for col in row.index]
-
-    st.dataframe(result_df.style.apply(style_table, axis=1), use_container_width=True)
+# ===============================
 # 🖥 الواجهة الرئيسية
 # ===============================
 st.title("🏭 سيرفيس تحضيرات Bail Yarn")
+
+# 🔄 زر التحديث من GitHub
+if st.button("🔄 تحديث البيانات من GitHub"):
+    fetch_from_github()
+
+if "last_update" in st.session_state:
+    st.caption(f"🕒 آخر تحديث: {st.session_state['last_update']}")
 
 all_sheets = load_all_sheets()
 
@@ -206,9 +201,5 @@ with col2:
 if st.button("عرض الحالة"):
     st.session_state["show_results"] = True
 
-# حفظ عرض النتائج بعد الضغط
-if st.session_state.get("show_results", False):
+if st.session_state.get("show_results", False) and all_sheets:
     check_machine_status(st.session_state.card_num, st.session_state.current_tons, all_sheets)
-
-
-
