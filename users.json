@@ -1,5 +1,5 @@
 {
-    "admin": {"password": "0000"},
-    "ENG:ZAKRIA": {"password": "12345"},
-    "ENG:Shehta": {"password": "54321"}
+  "admin": {"password": "admin", "hall": "A"},
+  "ahmed": {"password": "1111", "hall": "A"},
+  "mona": {"password": "2222", "hall": "B"}
 }
