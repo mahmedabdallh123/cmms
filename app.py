@@ -32,7 +32,7 @@ BRANCH = "main"
 # ملف في الريبو لكل Hall: data_A.xlsx, data_B.xlsx
 FILE_PATH_TEMPLATE = "data_{hall}.xlsx"
 # رابط RAW base (لو حتستخدم requests للتحميل)
-GITHUB_RAW_BASE = "https://raw.githubusercontent.com/mahmedabdallh123/input-data/main/"
+GITHUB_RAW_BASE = "https://raw.githubusercontent.com/mahmedabdallh123/cmms/main/"
 
 # -------------------------------
 # 🧩 دوال مساعدة للملفات والحالة
