@@ -6,6 +6,7 @@ import io
 import requests
 import shutil
 import re
+import hashlib
 from datetime import datetime, timedelta
 from base64 import b64decode
 
@@ -58,6 +59,37 @@ def safe_rerun():
         st.stop()
     except Exception:
         return
+
+# -------------------------------
+# 🆕 نظام البصمة الفريدة للتحديثات
+# -------------------------------
+def get_file_fingerprint():
+    """إنشاء بصمة فريدة للملف بناءً على وقت التعديل والمحتوى"""
+    if not os.path.exists(LOCAL_FILE):
+        return "initial"
+    
+    try:
+        # استخدام وقت التعديل وحجم الملف لإنشاء بصمة
+        stat = os.stat(LOCAL_FILE)
+        file_info = f"{stat.st_mtime}_{stat.st_size}"
+        
+        # إضافة هاش للمحتوى لزيادة الدقة (اختياري لأداء أفضل)
+        with open(LOCAL_FILE, "rb") as f:
+            file_hash = hashlib.md5(f.read()).hexdigest()[:8]
+        
+        return f"{file_info}_{file_hash}"
+    except Exception:
+        return str(datetime.now().timestamp())
+
+def update_fingerprint():
+    """تحديث البصمة في حالة الجلسة"""
+    st.session_state["file_fingerprint"] = get_file_fingerprint()
+
+def get_current_fingerprint():
+    """الحصول على البصمة الحالية أو إنشاء واحدة جديدة"""
+    if "file_fingerprint" not in st.session_state:
+        st.session_state["file_fingerprint"] = get_file_fingerprint()
+    return st.session_state["file_fingerprint"]
 
 # -------------------------------
 # 🧩 دوال مساعدة للملفات والحالة
@@ -219,13 +251,9 @@ def fetch_from_github_requests():
         response.raise_for_status()
         with open(LOCAL_FILE, "wb") as f:
             shutil.copyfileobj(response.raw, f)
-        # امسح الكاش إن أمكن
-        try:
-            st.cache_data.clear()
-        except Exception:
-            pass
-        st.session_state["last_update"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
-        st.success("✅ تم تحديث البيانات من GitHub بنجاح وتم مسح الكاش.")
+        # تحديث البصمة بدلاً من مسح الكاش
+        update_fingerprint()
+        st.success("✅ تم تحديث البيانات من GitHub بنجاح وتم تحديث البصمة.")
         safe_rerun()
     except Exception as e:
         st.error(f"⚠ فشل التحديث من GitHub (requests): {e}")
@@ -248,21 +276,22 @@ def fetch_from_github_api():
         content = b64decode(file_content.content)
         with open(LOCAL_FILE, "wb") as f:
             f.write(content)
-        try:
-            st.cache_data.clear()
-        except Exception:
-            pass
-        st.session_state["last_update"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+        # تحديث البصمة بدلاً من مسح الكاش
+        update_fingerprint()
         st.success("✅ تم تحميل الملف من GitHub API بنجاح.")
         safe_rerun()
     except Exception as e:
         st.error(f"⚠ فشل تحميل الملف من GitHub API: {e}")
 
 # -------------------------------
-# 📂 تحميل الشيتات (مخبأ)
+# 📂 تحميل الشيتات (مخبأ مع البصمة)
 # -------------------------------
 @st.cache_data(show_spinner=False)
-def load_all_sheets():
+def load_all_sheets(_fingerprint):
+    """
+    تحميل جميع الشيتات مع استخدام البصمة كمفتاح كاش
+    البصمة تضمن أن أي تحديث جديد سيؤدي لتحميل جديد
+    """
     if not os.path.exists(LOCAL_FILE):
         return None
     sheets = pd.read_excel(LOCAL_FILE, sheet_name=None)
@@ -272,7 +301,10 @@ def load_all_sheets():
 
 # نسخة مع dtype=object لواجهة التحرير
 @st.cache_data(show_spinner=False)
-def load_sheets_for_edit():
+def load_sheets_for_edit(_fingerprint):
+    """
+    تحميل الشيتات للتحرير مع استخدام البصمة كمفتاح كاش
+    """
     if not os.path.exists(LOCAL_FILE):
         return None
     sheets = pd.read_excel(LOCAL_FILE, sheet_name=None, dtype=object)
@@ -281,7 +313,7 @@ def load_sheets_for_edit():
     return sheets
 
 # -------------------------------
-# 🔁 حفظ محلي + رفع على GitHub + مسح الكاش + إعادة تحميل
+# 🔁 حفظ محلي + رفع على GitHub + تحديث البصمة + إعادة تحميل
 # -------------------------------
 def save_local_excel_and_push(sheets_dict, commit_message="Update from Streamlit"):
     # احفظ محلياً
@@ -294,23 +326,20 @@ def save_local_excel_and_push(sheets_dict, commit_message="Update from Streamlit
                     sh.astype(object).to_excel(writer, sheet_name=name, index=False)
     except Exception as e:
         st.error(f"⚠ خطأ أثناء الحفظ المحلي: {e}")
-        return load_sheets_for_edit()
+        return load_sheets_for_edit(get_current_fingerprint())
 
-    # امسح الكاش إن أمكن
-    try:
-        st.cache_data.clear()
-    except Exception:
-        pass
+    # تحديث البصمة بدلاً من مسح الكاش
+    update_fingerprint()
 
     # حاول الرفع عبر PyGithub token في secrets
     token = st.secrets.get("github", {}).get("token", None)
     if not token:
         st.warning("🔒 GitHub token not found in Streamlit secrets. لن يتم الرفع إلى الريبو.")
-        return load_sheets_for_edit()
+        return load_sheets_for_edit(get_current_fingerprint())
 
     if not GITHUB_AVAILABLE:
         st.error("PyGithub غير مثبت على بيئتك. تثبيته مطلوب للرفع التلقائي.")
-        return load_sheets_for_edit()
+        return load_sheets_for_edit(get_current_fingerprint())
 
     try:
         g = Github(token)
@@ -327,19 +356,15 @@ def save_local_excel_and_push(sheets_dict, commit_message="Update from Streamlit
                 repo.create_file(path=FILE_PATH, message=commit_message, content=content, branch=BRANCH)
             except Exception as e2:
                 st.error(f"⚠ فشل رفع الملف إلى GitHub: {e2}")
-                return load_sheets_for_edit()
+                return load_sheets_for_edit(get_current_fingerprint())
 
         st.success("✅ تم الحفظ والرفع على GitHub بنجاح.")
-        # إعادة تحميل النسخة المعدّلة للواجهة
-        try:
-            st.cache_data.clear()
-        except Exception:
-            pass
+        # إعادة تحميل النسخة المعدّلة للواجهة باستخدام البصمة الجديدة
         safe_rerun()
-        return load_sheets_for_edit()
+        return load_sheets_for_edit(get_current_fingerprint())
     except Exception as e:
         st.error(f"⚠ فشل الاتصال بـ GitHub: {e}")
-        return load_sheets_for_edit()
+        return load_sheets_for_edit(get_current_fingerprint())
 
 # -------------------------------
 # 🧰 دوال مساعدة للمعالجة والنصوص
@@ -531,17 +556,21 @@ with st.sidebar:
         fetch_from_github_requests()
     if st.button("🔄 تحديث الملف من GitHub (API)"):
         fetch_from_github_api()
-    st.markdown("ملحوظة: تحميل الـ RAW يعمل بدون توكين، لكن الرفع يحتاج توكين في secrets.")
+    
+    # 🆕 عرض معلومات البصمة الحالية
+    current_fingerprint = get_current_fingerprint()
+    st.markdown(f"🆔 بصمة الملف الحالية:")
+    st.caption(f"{current_fingerprint[:20]}...")
+    
     st.markdown("---")
     # زر لإعادة تسجيل الخروج
     if st.button("🚪 تسجيل الخروج"):
         logout_action()
 
-# تحميل الشيتات (عرض وتحليل)
-all_sheets = load_all_sheets()
-
-# تحميل الشيتات للتحرير (dtype=object)
-sheets_edit = load_sheets_for_edit()
+# 🆕 تحميل الشيتات باستخدام البصمة الحالية
+current_fingerprint = get_current_fingerprint()
+all_sheets = load_all_sheets(current_fingerprint)
+sheets_edit = load_sheets_for_edit(current_fingerprint)
 
 # واجهة التبويبات الرئيسية
 st.title("🏭 CMMS - Bail Yarn")
@@ -695,6 +724,8 @@ with tabs[1]:
                                         sh.to_excel(writer, sheet_name=name, index=False)
                                     except Exception:
                                         sh.astype(object).to_excel(writer, sheet_name=name, index=False)
+                            # تحديث البصمة بعد الحفظ المحلي
+                            update_fingerprint()
                             st.success("✅ تم إدراج الصف محليًا (لم يتم رفعه إلى GitHub).")
                             st.dataframe(sheets_edit[sheet_name_add])
                         except Exception as e:
@@ -728,6 +759,8 @@ with tabs[1]:
                                         sh.to_excel(writer, sheet_name=name, index=False)
                                     except Exception:
                                         sh.astype(object).to_excel(writer, sheet_name=name, index=False)
+                            # تحديث البصمة بعد الحفظ المحلي
+                            update_fingerprint()
                             st.success("✅ تم إضافة العمود محليًا (لم يتم رفعه إلى GitHub).")
                             st.dataframe(sheets_edit[sheet_name_col])
                         except Exception as e:
@@ -781,6 +814,8 @@ with tabs[1]:
                                                 sh.to_excel(writer, sheet_name=name, index=False)
                                             except Exception:
                                                 sh.astype(object).to_excel(writer, sheet_name=name, index=False)
+                                    # تحديث البصمة بعد الحفظ المحلي
+                                    update_fingerprint()
                                     st.success(f"✅ تم حذف الصفوف التالية محليًا: {rows_list}")
                                     st.dataframe(sheets_edit[sheet_name_del])
                                 except Exception as e:
