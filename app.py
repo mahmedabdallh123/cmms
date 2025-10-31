@@ -7,7 +7,7 @@ from base64 import b64decode
 # ===============================
 # إعدادات
 # ===============================
-REPO_NAME = "mahmedabdallh123/input-data"
+REPO_NAME = "mahmedabdallh123/cmms"
 BRANCH = "main"
 FILE_PATH = "Machine_Service_Lookup.xlsx"
 LOCAL_FILE = "Machine_Service_Lookup.xlsx"
