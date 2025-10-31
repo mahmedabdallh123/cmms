@@ -29,7 +29,7 @@ REPO_NAME = "mahmedabdallh123/cmms"  # عدل إذا لزم
 BRANCH = "main"
 FILE_PATH = "Machine_Service_Lookup.xlsx"
 LOCAL_FILE = "Machine_Service_Lookup.xlsx"
-GITHUB_EXCEL_URL = "https://github.com/mahmedabdallh123/cmms/raw/refs/heads/main/data_A.xlsx"
+GITHUB_EXCEL_URL = "https://github.com/mahmedabdallh123/cmms/raw/refs/heads/main/Machine_Service_Lookup.xlsx"
 
 # -------------------------------
 # 🔁 دالة آمنة لإعادة التشغيل (تتعامل مع اختلاف إصدارات Streamlit)
