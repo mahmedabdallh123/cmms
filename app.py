@@ -46,7 +46,7 @@ def detect_columns(df):
         'tones': ['tones', 'tone', 'current tones', 'current'],
         'date': ['date', 'time', 'timestamp', 'تاريخ'],
         'service': ['service', 'service needed', 'needed service', 'service_needed'],
-        'other': ['other', 'notes', 'remarks', 'ملاحظات'],
+        'event': ['other', 'notes', 'remarks', 'ملاحظات'],
         'servised_by': ['servised by', 'serviced by', 'technician', 'فني'],
         'card': ['card', 'machine', 'machine_no', 'machine id', 'card_no']
     }
@@ -388,9 +388,9 @@ def highlight_cell(val, col_name):
         "Service Needed": "background-color: #fff3cd; color:#856404; font-weight:bold;",
         "Done Services": "background-color: #d4edda; color:#155724; font-weight:bold;",
         "Not Done Services": "background-color: #f8d7da; color:#721c24; font-weight:bold;",
-        "Last Date": "background-color: #e7f1ff; color:#004085; font-weight:bold;",
+        "Date": "background-color: #e7f1ff; color:#004085; font-weight:bold;",
         "Last Tones": "background-color: #f0f0f0; color:#333; font-weight:bold;",
-        "Other": "background-color: #e2f0d9; color:#2e6f32; font-weight:bold;",
+        "Event": "background-color: #e2f0d9; color:#2e6f32; font-weight:bold;",
         "Servised by": "background-color: #fdebd0; color:#7d6608; font-weight:bold;",
         "Min_Tons": "background-color: #ebf5fb; color:#154360; font-weight:bold;",
         "Max_Tons": "background-color: #f9ebea; color:#641e16; font-weight:bold;",
@@ -531,11 +531,11 @@ def check_machine_status_enhanced(card_num, current_tons, all_sheets):
             # 🆕 تحديد الأعمدة التي تمثل الخدمات (ليست بيانات نظامية)
             ignore_cols = {
                 card_min_col.lower(), card_max_col.lower(), 
-                'card', 'machine', 'date', 'tones', 'other', 'servised by', 'servised_by'
+                'card', 'machine', 'date', 'tones', 'Event', 'servised by', 'servised_by'
             }
             if date_col: ignore_cols.add(date_col.lower())
             if tones_col: ignore_cols.add(tones_col.lower())
-            if other_col: ignore_cols.add(other_col.lower())
+            if event_col: ignore_cols.add(event_col.lower())
             if servised_col: ignore_cols.add(servised_col.lower())
 
             for _, r in matching_rows.iterrows():
@@ -578,9 +578,9 @@ def check_machine_status_enhanced(card_num, current_tons, all_sheets):
             "Service Needed": " + ".join(needed_parts) if needed_parts else "-",
             "Done Services": ", ".join(done_services) if done_services else "-",
             "Not Done Services": ", ".join(not_done) if not_done else "-",
-            "Last Date": last_date,
+            "Date": date,
             "Last Tones": last_tons,
-            "Other": last_other,
+            "Event": event,
             "Servised by": last_servised_by
         })
 
