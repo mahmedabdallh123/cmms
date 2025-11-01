@@ -458,6 +458,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
         needed_parts = split_needed_services(needed_service_raw)
         needed_norm = [normalize_name(p) for p in needed_parts]
 
+        # البحث في سجلات شيت الماكينة ضمن النطاق الحالي
         mask = (card_df.get("Min_Tones", 0).fillna(0) <= slice_max) & (card_df.get("Max_Tones", 0).fillna(0) >= slice_min)
         matching_rows = card_df[mask]
 
@@ -468,13 +469,22 @@ def check_machine_status(card_num, current_tons, all_sheets):
         last_servised_by = "-"
 
         if not matching_rows.empty:
-            ignore_cols = {"card", "Tones", "Min_Tones", "Max_Tones", "Date", "Other", "Servised by"}
+            # جمع الخدمات المنفذة من أعمدة الخدمة في شيت الماكينة
+            service_columns = []
+            for col in card_df.columns:
+                col_lower = str(col).strip().lower()
+                # استبعاد الأعمدة غير المرتبطة بالخدمة
+                if col_lower not in ["card", "tones", "min_tones", "max_tones", "date", "other", "servised by"]:
+                    service_columns.append(col)
+            
             for _, r in matching_rows.iterrows():
-                for col in matching_rows.columns:
-                    if col not in ignore_cols:
-                        val = str(r.get(col, "")).strip()
-                        if val and val.lower() not in ["nan", "none", ""]:
-                            done_services_set.add(col)
+                for col in service_columns:
+                    val = str(r.get(col, "")).strip()
+                    # إذا كانت القيمة تشير إلى أن الخدمة تمت (مثل 'o' أو 'x' أو أي قيمة)
+                    if val and val.lower() not in ["nan", "none", ""]:
+                        # إضافة اسم العمود كخدمة منفذة
+                        done_services_set.add(col)
+
             # قراءة آخر تاريخ
             if "Date" in matching_rows.columns:
                 try:
@@ -485,21 +495,34 @@ def check_machine_status(card_num, current_tons, all_sheets):
                         last_date = dates.loc[idx].strftime("%d/%m/%Y")
                 except Exception:
                     last_date = "-"
+            
             # آخر طن
             if "Tones" in matching_rows.columns:
                 tons_vals = pd.to_numeric(matching_rows["Tones"], errors="coerce")
                 if tons_vals.notna().any():
                     last_tons = int(tons_vals.max())
+            
             # Other
             if "Other" in matching_rows.columns:
                 last_other = str(matching_rows["Other"].dropna().iloc[-1]) if matching_rows["Other"].notna().any() else "-"
+            
             # Servised by
             if "Servised by" in matching_rows.columns:
                 last_servised_by = str(matching_rows["Servised by"].dropna().iloc[-1]) if matching_rows["Servised by"].notna().any() else "-"
 
         done_services = sorted(list(done_services_set))
         done_norm = [normalize_name(c) for c in done_services]
-        not_done = [orig for orig, n in zip(needed_parts, needed_norm) if n not in done_norm]
+        
+        # مقارنة الخدمات المطلوبة مع الخدمات المنفذة
+        not_done = []
+        for orig, n in zip(needed_parts, needed_norm):
+            found = False
+            for done_n in done_norm:
+                if n in done_n or done_n in n:  # مقارنة مرنة للنصوص
+                    found = True
+                    break
+            if not found:
+                not_done.append(orig)
 
         all_results.append({
             "Min_Tons": slice_min,
