@@ -509,7 +509,6 @@ def check_machine_status(card_num, current_tons, all_sheets):
         file_name=f"Machine_{card_num}_Service_Check.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
 # -------------------------------
 # 🖥 الواجهة الرئيسية المدمجة
 # -------------------------------
