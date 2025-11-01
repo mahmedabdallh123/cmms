@@ -367,8 +367,6 @@ def save_local_excel_and_push(sheets_dict, commit_message="Update from Streamlit
         return load_sheets_for_edit(get_current_fingerprint())
 
 # -------------------------------
-# 🧰 دوال مساعدة للمعالجة والنصوص
-# -------------------------------
 def normalize_name(s):
     if s is None: return ""
     s = str(s).replace("\n", "+")
@@ -382,172 +380,133 @@ def split_needed_services(needed_service_str):
     parts = re.split(r"\+|,|\n|;", needed_service_str)
     return [p.strip() for p in parts if p.strip() != ""]
 
-def highlight_cell(val, col_name):
-    color_map = {
-        "Service Needed": "background-color: #fff3cd; color:#856404; font-weight:bold;",
-        "Done Services": "background-color: #d4edda; color:#155724; font-weight:bold;",
-        "Not Done Services": "background-color: #f8d7da; color:#721c24; font-weight:bold;",
-        "Last Date": "background-color: #e7f1ff; color:#004085; font-weight:bold;",
-        "Last Tones": "background-color: #f0f0f0; color:#333; font-weight:bold;",
-        "Other": "background-color: #e2f0d9; color:#2e6f32; font-weight:bold;",
-        "Servised by": "background-color: #fdebd0; color:#7d6608; font-weight:bold;",
-        "Min_Tons": "background-color: #ebf5fb; color:#154360; font-weight:bold;",
-        "Max_Tons": "background-color: #f9ebea; color:#641e16; font-weight:bold;",
-    }
-    return color_map.get(col_name, "")
-
-def style_table(row):
-    return [highlight_cell(row[col], col) for col in row.index]
-
-# -------------------------------
-# 🖥 دالة فحص الماكينة
-# -------------------------------
+# ================================
+# 🔍 الفحص الديناميكي الكامل
+# ================================
 def check_machine_status(card_num, current_tons, all_sheets):
     if not all_sheets or "ServicePlan" not in all_sheets:
         st.error("❌ الملف لا يحتوي على شيت ServicePlan.")
         return
+
     service_plan_df = all_sheets["ServicePlan"]
     card_sheet_name = f"Card{card_num}"
+
     if card_sheet_name not in all_sheets:
         st.warning(f"⚠ لا يوجد شيت باسم {card_sheet_name}")
         return
+
     card_df = all_sheets[card_sheet_name]
 
-    # نطاق العرض
-    if "view_option" not in st.session_state:
-        st.session_state.view_option = "الشريحة الحالية فقط"
+    # تحديد الشريحة المناسبة في ServicePlan حسب الـ Current Tons
+    selected_slice = service_plan_df[
+        (service_plan_df["Min_Tones"] <= current_tons) &
+        (service_plan_df["Max_Tones"] >= current_tons)
+    ]
 
-    st.subheader("⚙ نطاق العرض")
-    view_option = st.radio(
-        "اختر نطاق العرض:",
-        ("الشريحة الحالية فقط", "كل الشرائح الأقل", "كل الشرائح الأعلى", "نطاق مخصص", "كل الشرائح"),
-        horizontal=True,
-        key="view_option"
-    )
-
-    min_range = st.session_state.get("min_range", max(0, current_tons - 500))
-    max_range = st.session_state.get("max_range", current_tons + 500)
-    if view_option == "نطاق مخصص":
-        col1, col2 = st.columns(2)
-        with col1:
-            min_range = st.number_input("من (طن):", min_value=0, step=100, value=min_range, key="min_range")
-        with col2:
-            max_range = st.number_input("إلى (طن):", min_value=min_range, step=100, value=max_range, key="max_range")
-
-    # اختيار الشرائح
-    if view_option == "الشريحة الحالية فقط":
-        selected_slices = service_plan_df[(service_plan_df["Min_Tones"] <= current_tons) & (service_plan_df["Max_Tones"] >= current_tons)]
-    elif view_option == "كل الشرائح الأقل":
-        selected_slices = service_plan_df[service_plan_df["Max_Tones"] <= current_tons]
-    elif view_option == "كل الشرائح الأعلى":
-        selected_slices = service_plan_df[service_plan_df["Min_Tones"] >= current_tons]
-    elif view_option == "نطاق مخصص":
-        selected_slices = service_plan_df[(service_plan_df["Min_Tones"] >= min_range) & (service_plan_df["Max_Tones"] <= max_range)]
-    else:
-        selected_slices = service_plan_df.copy()
-
-    if selected_slices.empty:
-        st.warning("⚠ لا توجد شرائح مطابقة حسب النطاق المحدد.")
+    if selected_slice.empty:
+        st.warning("⚠ لا توجد شريحة مطابقة للـ Current Tons.")
         return
 
-    all_results = []
-    for _, current_slice in selected_slices.iterrows():
-        slice_min = current_slice["Min_Tones"]
-        slice_max = current_slice["Max_Tones"]
-        needed_service_raw = current_slice.get("Service", "")
-        needed_parts = split_needed_services(needed_service_raw)
-        needed_norm = [normalize_name(p) for p in needed_parts]
+    results = []
 
-        # البحث في سجلات شيت الماكينة ضمن النطاق الحالي
-        mask = (card_df.get("Min_Tones", 0).fillna(0) <= slice_max) & (card_df.get("Max_Tones", 0).fillna(0) >= slice_min)
-        matching_rows = card_df[mask]
+    for _, row in selected_slice.iterrows():
+        slice_min = row["Min_Tones"]
+        slice_max = row["Max_Tones"]
 
-        done_services_set = set()
-        last_date = "-"
-        last_tons = "-"
-        last_other = "-"
-        last_servised_by = "-"
+        needed_raw = row.get("Service", "")
+        needed_parts = split_needed_services(needed_raw)
+        needed_norm = [normalize_name(x) for x in needed_parts]
 
-        if not matching_rows.empty:
-            # جمع الخدمات المنفذة من أعمدة الخدمة في شيت الماكينة
-            service_columns = []
-            for col in card_df.columns:
-                col_lower = str(col).strip().lower()
-                # استبعاد الأعمدة غير المرتبطة بالخدمة
-                if col_lower not in ["card", "tones", "min_tones", "max_tones", "date", "other", "servised by"]:
-                    service_columns.append(col)
-            
-            for _, r in matching_rows.iterrows():
-                for col in service_columns:
-                    val = str(r.get(col, "")).strip()
-                    # إذا كانت القيمة تشير إلى أن الخدمة تمت (مثل 'o' أو 'x' أو أي قيمة)
-                    if val and val.lower() not in ["nan", "none", ""]:
-                        # إضافة اسم العمود كخدمة منفذة
-                        done_services_set.add(col)
+        # نطاق الشريحة في كارت الماكينة
+        mask = (card_df.get("Min_Tones", 0).fillna(0) <= slice_max) & \
+               (card_df.get("Max_Tones", 0).fillna(0) >= slice_min)
+        card_rows = card_df[mask]
 
-            # قراءة آخر تاريخ
-            if "Date" in matching_rows.columns:
-                try:
-                    cleaned_dates = matching_rows["Date"].astype(str).str.replace("\\", "/", regex=False)
-                    dates = pd.to_datetime(cleaned_dates, errors="coerce", dayfirst=True)
-                    if dates.notna().any():
-                        idx = dates.idxmax()
-                        last_date = dates.loc[idx].strftime("%d/%m/%Y")
-                except Exception:
-                    last_date = "-"
-            
-            # آخر طن
-            if "Tones" in matching_rows.columns:
-                tons_vals = pd.to_numeric(matching_rows["Tones"], errors="coerce")
-                if tons_vals.notna().any():
-                    last_tons = int(tons_vals.max())
-            
-            # Other
-            if "Other" in matching_rows.columns:
-                last_other = str(matching_rows["Other"].dropna().iloc[-1]) if matching_rows["Other"].notna().any() else "-"
-            
-            # Servised by
-            if "Servised by" in matching_rows.columns:
-                last_servised_by = str(matching_rows["Servised by"].dropna().iloc[-1]) if matching_rows["Servised by"].notna().any() else "-"
+        if card_rows.empty:
+            result_row = {
+                "Machine": card_num,
+                "Min_Tons": slice_min,
+                "Max_Tons": slice_max,
+                "Service Needed": " + ".join(needed_parts) if needed_parts else "-",
+                "Done Services": "-",
+                "Not Done Services": " + ".join(needed_parts) if needed_parts else "-",
+                "Tones": "-"
+            }
+            results.append(result_row)
+            continue
 
-        done_services = sorted(list(done_services_set))
-        done_norm = [normalize_name(c) for c in done_services]
-        
-        # مقارنة الخدمات المطلوبة مع الخدمات المنفذة
+        # تحديد الأعمدة الأساسية التي ليست خدمات
+        base_cols = ["card", "tones", "min_tones", "max_tones"]
+        # كل الأعمدة الأخرى تعتبر إما خدمات أو معلومات إضافية
+        all_cols = list(card_df.columns)
+        service_cols = []
+        extra_cols = []
+
+        for c in all_cols:
+            c_low = str(c).strip().lower()
+            if c_low in base_cols:
+                continue
+            if c_low in ["date", "other", "servised by"]:
+                extra_cols.append(c)
+            else:
+                # نعتبره خدمة إلا إذا كانت قيمه كلها فاضية
+                if card_df[c].notna().any():
+                    service_cols.append(c)
+                else:
+                    extra_cols.append(c)
+
+        done_services = set()
+        extra_info = {col: "" for col in extra_cols}
+        tone_val = "-"
+
+        # تحليل الصفوف في نفس الشريحة
+        for _, r in card_rows.iterrows():
+            # الخدمات المنفذة
+            for col in service_cols:
+                val = str(r.get(col, "")).strip()
+                if val and val.lower() not in ["nan", "none", ""]:
+                    done_services.add(col)
+                    tone_val = r.get("Tones", tone_val)
+            # الأعمدة الإضافية
+            for col in extra_cols:
+                val = str(r.get(col, "")).strip()
+                if val:
+                    extra_info[col] = val
+
+        done_norm = [normalize_name(x) for x in done_services]
         not_done = []
+
         for orig, n in zip(needed_parts, needed_norm):
-            found = False
-            for done_n in done_norm:
-                if n in done_n or done_n in n:  # مقارنة مرنة للنصوص
-                    found = True
-                    break
+            found = any(n in dn or dn in n for dn in done_norm)
             if not found:
                 not_done.append(orig)
 
-        all_results.append({
+        result_row = {
+            "Machine": card_num,
             "Min_Tons": slice_min,
             "Max_Tons": slice_max,
             "Service Needed": " + ".join(needed_parts) if needed_parts else "-",
             "Done Services": ", ".join(done_services) if done_services else "-",
             "Not Done Services": ", ".join(not_done) if not_done else "-",
-            "Last Date": last_date,
-            "Last Tones": last_tons,
-            "Other": last_other,
-            "Servised by": last_servised_by
-        })
+            "Tones": tone_val
+        }
 
-    result_df = pd.DataFrame(all_results).dropna(how="all").reset_index(drop=True)
+        # دمج الأعمدة الديناميكية
+        result_row.update(extra_info)
+        results.append(result_row)
 
-    st.markdown("### 📋 نتائج الفحص")
-    st.dataframe(result_df.style.apply(style_table, axis=1), use_container_width=True)
+    # إنشاء الداتا فريم النهائي
+    result_df = pd.DataFrame(results).reset_index(drop=True)
+    st.markdown("### 📋 نتائج الفحص الديناميكية")
+    st.dataframe(result_df, use_container_width=True)
 
-    # تنزيل النتائج
+    # تنزيل النتائج كـ Excel
     buffer = io.BytesIO()
     result_df.to_excel(buffer, index=False, engine="openpyxl")
     st.download_button(
-        label="💾 حفظ النتائج كـ Excel",
+        label="💾 تحميل النتيجة كـ Excel",
         data=buffer.getvalue(),
-        file_name=f"Service_Report_Card{card_num}.xlsx",
+        file_name=f"Machine_{card_num}_Service_Check.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
