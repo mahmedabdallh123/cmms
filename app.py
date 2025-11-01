@@ -397,7 +397,7 @@ def check_machine_status(card_num, current_tons, all_sheets):
 
     card_df = all_sheets[card_sheet_name]
 
-    # تحديد الشريحة المناسبة في ServicePlan حسب الـ Current Tons
+    # الشريحة المناسبة في ServicePlan
     selected_slice = service_plan_df[
         (service_plan_df["Min_Tones"] <= current_tons) &
         (service_plan_df["Max_Tones"] >= current_tons)
@@ -428,79 +428,61 @@ def check_machine_status(card_num, current_tons, all_sheets):
                 "Min_Tons": slice_min,
                 "Max_Tons": slice_max,
                 "Service Needed": " + ".join(needed_parts) if needed_parts else "-",
-                "Done Services": "-",
-                "Not Done Services": " + ".join(needed_parts) if needed_parts else "-",
-                "Tones": "-"
+                "Service Done": "-",
+                "Service Didn't Done": " + ".join(needed_parts) if needed_parts else "-",
+                "Tons": "-"
             }
             results.append(result_row)
             continue
 
-        # تحديد الأعمدة الأساسية التي ليست خدمات
+        # الأعمدة الأساسية فقط
         base_cols = ["card", "tones", "min_tones", "max_tones"]
-        # كل الأعمدة الأخرى تعتبر إما خدمات أو معلومات إضافية
-        all_cols = list(card_df.columns)
-        service_cols = []
-        extra_cols = []
 
-        for c in all_cols:
-            c_low = str(c).strip().lower()
-            if c_low in base_cols:
-                continue
-            if c_low in ["date", "other", "servised by"]:
-                extra_cols.append(c)
-            else:
-                # نعتبره خدمة إلا إذا كانت قيمه كلها فاضية
-                if card_df[c].notna().any():
-                    service_cols.append(c)
-                else:
-                    extra_cols.append(c)
+        # كل الأعمدة الأخرى تعتبر "إضافية" (سواء كانت Correction أو Event أو أي عمود جديد)
+        extra_cols = [c for c in card_df.columns if c.lower() not in base_cols]
 
         done_services = set()
-        extra_info = {col: "" for col in extra_cols}
         tone_val = "-"
+        extra_info = {col: "" for col in extra_cols}
 
-        # تحليل الصفوف في نفس الشريحة
         for _, r in card_rows.iterrows():
-            # الخدمات المنفذة
-            for col in service_cols:
-                val = str(r.get(col, "")).strip()
-                if val and val.lower() not in ["nan", "none", ""]:
-                    done_services.add(col)
-                    tone_val = r.get("Tones", tone_val)
-            # الأعمدة الإضافية
+            # تحقق من الأعمدة اللي تعتبر خدمات بناءً على needed_parts فقط
+            for service in needed_norm:
+                for col in card_df.columns:
+                    if normalize_name(col) == service and str(r.get(col, "")).strip():
+                        done_services.add(col)
+                        tone_val = r.get("Tones", tone_val)
+
+            # باقي الأعمدة نرجعها زي ما هي
             for col in extra_cols:
                 val = str(r.get(col, "")).strip()
                 if val:
                     extra_info[col] = val
 
         done_norm = [normalize_name(x) for x in done_services]
-        not_done = []
+        not_done = [s for s, n in zip(needed_parts, needed_norm) if n not in done_norm]
 
-        for orig, n in zip(needed_parts, needed_norm):
-            found = any(n in dn or dn in n for dn in done_norm)
-            if not found:
-                not_done.append(orig)
-
+        # السطر النهائي
         result_row = {
             "Machine": card_num,
             "Min_Tons": slice_min,
             "Max_Tons": slice_max,
             "Service Needed": " + ".join(needed_parts) if needed_parts else "-",
-            "Done Services": ", ".join(done_services) if done_services else "-",
-            "Not Done Services": ", ".join(not_done) if not_done else "-",
-            "Tones": tone_val
+            "Service Done": ", ".join(done_services) if done_services else "-",
+            "Service Didn't Done": ", ".join(not_done) if not_done else "-",
+            "Tons": tone_val
         }
 
-        # دمج الأعمدة الديناميكية
+        # إضافة الأعمدة الجديدة كما هي
         result_row.update(extra_info)
         results.append(result_row)
 
-    # إنشاء الداتا فريم النهائي
+    # عرض النتائج
     result_df = pd.DataFrame(results).reset_index(drop=True)
-    st.markdown("### 📋 نتائج الفحص الديناميكية")
+    st.markdown("### 📋 نتائج الفحص الديناميكية (تشمل الأعمدة الجديدة كما هي)")
     st.dataframe(result_df, use_container_width=True)
 
-    # تنزيل النتائج كـ Excel
+    # تحميل Excel
     buffer = io.BytesIO()
     result_df.to_excel(buffer, index=False, engine="openpyxl")
     st.download_button(
